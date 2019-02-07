@@ -1,2 +1,2 @@
 # ADMLoader
-AMD Loader
+AMD(Async Module Loader) Loader implementation.
