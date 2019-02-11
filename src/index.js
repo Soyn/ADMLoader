@@ -18,6 +18,7 @@
   var document = root.document;
   var head = document.head;
   var baseElement = document.getElementsByTagName('base')[0];
+  var currentlyAddingScript, interactiveScript, anonymousMeta;
 
   // #utils region
   function isType(type) {
@@ -103,6 +104,7 @@
   }
   // #end region
 
+  // #format id region
   var dotReg = /\/\.\//g; // match /./
   var doubleDotReg = /\/[^/]+\/\.\.\//g; // match /a/../
   var multiSlashReg = /([^:/])\/+\//g;  // a/b/
@@ -119,7 +121,7 @@
     path = path.replace(multiSlashReg, '$1/');
 
     // /a/b/../ --> /a/
-    while(path.match(doubleDotReg)) {
+    while (path.match(doubleDotReg)) {
       path = path.replace(doubleDotReg, '/');
     }
     // main/test
@@ -146,5 +148,91 @@
     }
 
     return url;
+  }
+  // #end region
+
+  function onload(error) {
+    // ensure just execute once
+    node.onload = node.onerror = node.onreadystatechange = null;
+
+    head.remove(node);
+    node = null;
+
+    callback(error);
+  }
+  /**
+   * load script
+   * @param {String} script id
+   * @param {Function} call callback util dependences load completes
+   */
+  function loadScript(url, callback) {
+    var node = document.createElement('script');
+    var supportOnLoad = 'onload' in node;
+
+    node.chartset = CONFIG.chartset || 'utf-8';
+    node.setAttribute('data-module', url);
+
+    if (supportOnLoad) {
+      node.onload = function () {
+        onload()
+      }
+
+      node.onerror = function () {
+        onload(true);
+      }
+    } else {
+      node.onreadystatechange = function () {
+        if (/loaded|complete/g.test(node.readyState)) {
+          onload();
+        }
+      }
+    }
+
+    node.async = true;
+    node.src = url;
+
+    // https://gist.github.com/invernizzie/5260808#file-require-js-L1846
+
+    // For some cache cases in IE 6-8, the script executes before the end
+    //of the appendChild execution, so to tie an anonymous define
+    //call to the module name (which is stored on the node), hold on
+    //to a reference to this node, but clear after the DOM insertion.
+    currentlyAddingScript = node;
+
+    baseElement ? head.insertBefore(node, baseElement) : head.appendChild(node);
+
+    currentlyAddingScript = null;
+
+    
+  }
+
+  function getScripts() {
+    return document.getElementsByTagName('script');
+  }
+
+  // get interactive script
+
+  function getInteractiveScript() {
+    if (currentlyAddingScript) {
+      return currentlyAddingScript;
+    }
+
+    if (interactiveScript &&
+        interactiveScript.readyState === 'interactive') {
+          return interactiveScript;
+        }
+    if(document.currentScript) {
+      interactiveScript = document.currentScript;
+      return interactiveScript;
+    }
+
+    eachReverse(getScripts, function(script) {
+      if (script.readyState === 'interactive') {
+        interactiveScript = script;
+        return true;
+      }
+    });
+
+    return interactiveScript;
   }
 })(this)
