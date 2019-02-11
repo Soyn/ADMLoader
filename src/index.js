@@ -1,4 +1,4 @@
-(function(root){
+(function (root) {
   var CONFIG = {
     baseUrl: '',
     chartset: '',
@@ -14,7 +14,7 @@
     config: CONFIG,
   };
 
-  var noop = function() {};
+  var noop = function () { };
   var document = root.document;
   var head = document.head;
   var baseElement = document.getElementsByTagName('base')[0];
@@ -22,7 +22,7 @@
   // #utils region
   function isType(type) {
     return function (obj) {
-      return Object.prototype.toString.call(obj) === '[object ' + type + ']'; 
+      return Object.prototype.toString.call(obj) === '[object ' + type + ']';
     };
   }
 
@@ -41,7 +41,7 @@
       var start = step > 0 ? 0 : arr.length - 1;
       var end = step > 0 ? arr.length : 0;
 
-      while(start !== end) {
+      while (start !== end) {
         if (callback(arr[start], start, arr)) return;
         start += _step;
       }
@@ -52,9 +52,9 @@
   var eachReverse = _each(-1);
 
   function eachProp(obj, callback) {
-    for(var prop in obj) {
+    for (var prop in obj) {
       if (hasProp(obj, prop)) {
-        if(callback(obj[prop], prop)) break;
+        if (callback(obj[prop], prop)) break;
       }
     }
   }
@@ -66,7 +66,7 @@
     if (proto === null) return true;
     var baseProto = proto;
 
-    while(Object.getPrototypeOf(obj)) {
+    while (Object.getPrototypeOf(obj)) {
       baseProto = Object.getPrototypeOf(baseProto);
     }
 
@@ -82,7 +82,7 @@
     var _global = root;
     var _path = path.split('.');
 
-    each(_path, function(prop) {
+    each(_path, function (prop) {
       _global = (_global !== null) && _global[prop];
     })
     return _global;
@@ -92,15 +92,59 @@
    * Mixin source props to target
    */
 
-   function mixin(target, source) {
-     if (source) {
-      eachProp(source, function(value, prop) {
+  function mixin(target, source) {
+    if (source) {
+      eachProp(source, function (value, prop) {
         target[prop] = value;
       });
-     }
+    }
 
-     return target;
-   }
+    return target;
+  }
   // #end region
 
+  var dotReg = /\/\.\//g; // match /./
+  var doubleDotReg = /\/[^/]+\/\.\.\//g; // match /a/../
+  var multiSlashReg = /([^:/])\/+\//g;  // a/b/
+  var ignorePartReg = /[?#].*$/; // main/test?foo#bar
+  var suffixReg = /\.js$/;  // abc.js
+  var dirnameReg = /[^?#]*\//;  // abc//
+
+  function fixPath(path) {
+    // /a/b/./c/./d --> /a/b/c/d
+    path = path.replace(dotReg, '/');
+
+    // a//b/c --> a/b/c
+    // a///b////c --> a/b/c
+    path = path.replace(multiSlashReg, '$1/');
+
+    // /a/b/../ --> /a/
+    while(path.match(doubleDotReg)) {
+      path = path.replace(doubleDotReg, '/');
+    }
+    // main/test
+    path = path.replace(ignorePartReg, '');
+
+    // add .js suffix
+    if (!suffixReg.test(path)) {
+      path += 'js';
+    }
+  }
+
+  function dirname(path) {
+    var m = path.match(dirnameReg);
+    return m ? m[0] : './';
+  }
+
+  function id2Url(url, baseUrl) {
+    url = fixPath(url);
+    if (baseUrl) {
+      url = fixPath(dirname(baseUrl) + url);
+    }
+    if (CONFIG.urlArgs) {
+      url += CONFIG.urlArgs;
+    }
+
+    return url;
+  }
 })(this)
