@@ -163,7 +163,7 @@
   /**
    * load script
    * @param {String} script id
-   * @param {Function} call callback util dependences load completes
+   * @param {Function} call callback util dependencies load completes
    */
   function loadScript(url, callback) {
     var node = document.createElement('script');
@@ -257,12 +257,12 @@
     }
     return url;
   }
-  function getVaildDependences(dependences, baseUrl) {
-    var vaildDependences = [];
-    each(dependences, function(dep){
-      vaildDependences.push(generateVaildUrl(dep, baseUrl));
+  function getVailddependencies(dependencies, baseUrl) {
+    var vailddependencies = [];
+    each(dependencies, function(dep){
+      vailddependencies.push(generateVaildUrl(dep, baseUrl));
     })
-    return vaildDependences;
+    return vailddependencies;
   }
 
   // # region of Module class
@@ -272,9 +272,9 @@
     INIT: 0,
     // fetch, when fetch source code
     FETCH: 1,
-    // save, save dependences info
+    // save, save dependencies info
     SAVE = 2,
-    // load, parse dependences, resolve dependces
+    // load, parse dependencies, resolve dependces
     LOAD: 3,
     // executing module, exports is not unused
     EXECUTING: 4,
@@ -283,16 +283,16 @@
     // error
     ERROR: 6,
   };
-  function Module(url, dependences) {
+  function Module(url, dependencies) {
     if (this instanceof Module) {
       this.url = url;
-      this.dependencesUrl = getVaildDependences(dependences || [], url);
-      this.dependencesModules = [];
+      this.dependenciesUrl = getVailddependencies(dependencies || [], url);
+      this.dependenciesModules = [];
       this.refs = [];
       this.status = STATUS.INIT;
       this.exports = {};
     } else {
-      return new Module(url, dependences);
+      return new Module(url, dependencies);
     }
   }
   Module.STATUS = STATUS;
@@ -301,14 +301,14 @@
     // resolve every dependene as module
     resolve: function() {
       var mod = this;
-      each(mod.dependencesUrl, function (dep) {
+      each(mod.dependenciesUrl, function (dep) {
         var m = Module.get(url);
-        m.dependencesModules.push(m);
+        m.dependenciesModules.push(m);
       });
     },
-    setDependences: function () {
+    setdependencies: function () {
       var mod = this;
-      each(mod.dependencesModules, function (dependenceModule) {
+      each(mod.dependenciesModules, function (dependenceModule) {
         var exsit = false;
         each(mod.refs, function (ref) {
           if (ref === mod.url) return (exsit = true);
@@ -321,15 +321,15 @@
     // check and resolve circular dependence
     checkCircular: function () {
       var mod = this, args = [], isCircular = false;
-      each(mod.dependencesModules, function (dependenceModule) {
+      each(mod.dependenciesModules, function (dependenceModule) {
         if (dependenceModule.status !== STATUS.EXECUTING) return;
         
         isCircular = false;
-        each(dependenceModule.dependencesModules, function(m) {
+        each(dependenceModule.dependenciesModules, function(m) {
           if (m.url === mod.url) return (isCircular = true);
         });
         if (!isCircular) return;
-        each(dependenceModule.dependencesModules, function (m) {
+        each(dependenceModule.dependenciesModules, function (m) {
           if (m.url !== mod.url && m.status >= STATUS.EXECUTED) {
             args.push(m.exports);
           } else if(m.url === mod.url){
@@ -337,7 +337,7 @@
           }
         });
 
-        if (args.length !== dependenceModule.dependencesModules.length) {
+        if (args.length !== dependenceModule.dependenciesModules.length) {
           args.push(dependenceModule.exports)
         }
         try {
@@ -347,10 +347,49 @@
         } catch (e) {
           dependenceModule.exports = undefined;
           dependenceModule.status = STATUS.error;
-          // throw error
+          throw new Error("Can't fix circular dependency" + mod.url + "-->" + dependenceModule.url);
         }
       });
     },
+    makeExports: function(args) {
+      var mod = this;
+      var result = isFunction(mod.factory) ? mod.factory.apply(root, args) : mod.factory;
+      mod.exports = isPlainObject(mod.exports) ? result : mod.exports;
+    },
+    notifyDependencies: function() {
+      var mod = this;
+
+      each(mod.refs, function(ref) {
+        var args = [];
+        ref = Module.get(ref);
+
+        each(ref.dependencies, function(m) {
+          if (m.status >= STATUS.EXECUTED) args.push(m.exports);
+        });
+
+        if (args.length === ref.dependencies.length) {
+          args.push(ref.exports);
+          ref.makeExports(args);
+          ref.status = STATUS.EXECUTED;
+          ref.notifyDependencies()
+        } else {
+          ref.load();
+        }
+      });
+    },
+    fetch: function () {
+      var mod = this;
+
+      if (mod.status >= STATUS.FETCH) return mod;
+      mod.status = STATUS.FETCH;
+
+      loadScript(mod.url, function(error) {
+        mod.onload(error);
+      });
+    },
+    onload: function () {
+      
+    }
     load: function() {
       var mod = this;
       var args = [];
@@ -359,10 +398,40 @@
 
       mod = STATUS.LOAD;
       mod.resolve();  // resolve every dependence of current module
+
       // set dependence to ensure when dependence module is loaded,
       // current module will be notified.
-      mod.setDependences();
+      mod.setdependencies();
+
+      // try to resolve circular dependency
+      mod.checkCircular();
+
+      // make every dependency of current module to load
+      each(mod.dependencies, function(dep) {
+        if (dep.status < STATUS.FETCH) {
+          dep.fetch();
+        } else if (dep.status === STATUS.SAVE) {
+          dep.load();
+        } else if (dep.status >= STATUS.EXECUTED) {
+          args.push(dep.exports);
+        }
+      });
+
+      mod.status = STATUS.EXECUTING;
+
+      if (args.length === mod.dependenciesModules.length) {
+        args.push(mod.exports);
+        mod.makeExports(args);
+        mod.status = STATUS.EXECUTED;
+
+        // current module is ready, notify other modules which are depend on current module
+        mod.notifyDependencies();
+      }
     }
   }
+
+  Module.get = function(url, deps) {
+    return MODULES[url] || (MODULES[url] = new Module(url, deps));
+  };
   // # end region
 })(this)
