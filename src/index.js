@@ -235,4 +235,134 @@
 
     return interactiveScript;
   }
+
+  // pre-check and fix the dependence
+  var rUrl = /\//;  // releative url
+  var rAbsoluteUrl = /^\/|^https?:\/\//;  // absolute url or external url
+  function generateVaildUrl(url, baseUrl){
+    var shim = CONFIG.shim[url], inpaths = false;
+    if (CONFIG.paths[url]) {
+      url = CONFIG.paths[url];
+      inpaths = true;
+    }
+
+    if (rAbsoluteUrl.test(url)) {
+      url = id2Url(url, baseUrl);
+    } else if (rUrl.test(url)) {
+      url = id2Url(url, inpaths ? CONFIG.baseUrl : baseUrl);
+    }
+
+    if (shim && !SHIMMAP[url]) {
+      SHIMMAP[url] = shim;
+    }
+    return url;
+  }
+  function getVaildDependences(dependences, baseUrl) {
+    var vaildDependences = [];
+    each(dependences, function(dep){
+      vaildDependences.push(generateVaildUrl(dep, baseUrl));
+    })
+    return vaildDependences;
+  }
+
+  // # region of Module class
+  // static property of Module
+  var STATUS = {
+    // init, when module is created
+    INIT: 0,
+    // fetch, when fetch source code
+    FETCH: 1,
+    // save, save dependences info
+    SAVE = 2,
+    // load, parse dependences, resolve dependces
+    LOAD: 3,
+    // executing module, exports is not unused
+    EXECUTING: 4,
+    // executed, exports is ready to use
+    EXECUTED: 5,
+    // error
+    ERROR: 6,
+  };
+  function Module(url, dependences) {
+    if (this instanceof Module) {
+      this.url = url;
+      this.dependencesUrl = getVaildDependences(dependences || [], url);
+      this.dependencesModules = [];
+      this.refs = [];
+      this.status = STATUS.INIT;
+      this.exports = {};
+    } else {
+      return new Module(url, dependences);
+    }
+  }
+  Module.STATUS = STATUS;
+  Module.prototype = {
+    constructor: Module,
+    // resolve every dependene as module
+    resolve: function() {
+      var mod = this;
+      each(mod.dependencesUrl, function (dep) {
+        var m = Module.get(url);
+        m.dependencesModules.push(m);
+      });
+    },
+    setDependences: function () {
+      var mod = this;
+      each(mod.dependencesModules, function (dependenceModule) {
+        var exsit = false;
+        each(mod.refs, function (ref) {
+          if (ref === mod.url) return (exsit = true);
+
+          if (!exsit) dependenceModule.refs.push(mod.url);
+        })
+      });
+    },
+
+    // check and resolve circular dependence
+    checkCircular: function () {
+      var mod = this, args = [], isCircular = false;
+      each(mod.dependencesModules, function (dependenceModule) {
+        if (dependenceModule.status !== STATUS.EXECUTING) return;
+        
+        isCircular = false;
+        each(dependenceModule.dependencesModules, function(m) {
+          if (m.url === mod.url) return (isCircular = true);
+        });
+        if (!isCircular) return;
+        each(dependenceModule.dependencesModules, function (m) {
+          if (m.url !== mod.url && m.status >= STATUS.EXECUTED) {
+            args.push(m.exports);
+          } else if(m.url === mod.url){
+            args.push(undefined);
+          }
+        });
+
+        if (args.length !== dependenceModule.dependencesModules.length) {
+          args.push(dependenceModule.exports)
+        }
+        try {
+          dependenceModule.exports = isFunction(dependenceModule.factory)
+            ? dependenceModule.factory.apply(root, args) : dependenceModule.factory;
+          dependenceModule.status = STATUS.EXECUTED;
+        } catch (e) {
+          dependenceModule.exports = undefined;
+          dependenceModule.status = STATUS.error;
+          // throw error
+        }
+      });
+    },
+    load: function() {
+      var mod = this;
+      var args = [];
+
+      if (mod.status >= STATUS.load) return mod;
+
+      mod = STATUS.LOAD;
+      mod.resolve();  // resolve every dependence of current module
+      // set dependence to ensure when dependence module is loaded,
+      // current module will be notified.
+      mod.setDependences();
+    }
+  }
+  // # end region
 })(this)
