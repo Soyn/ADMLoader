@@ -257,7 +257,7 @@
     }
     return url;
   }
-  function getVailddependencies(dependencies, baseUrl) {
+  function getVaildDependencies(dependencies, baseUrl) {
     var vailddependencies = [];
     each(dependencies, function(dep){
       vailddependencies.push(generateVaildUrl(dep, baseUrl));
@@ -286,7 +286,7 @@
   function Module(url, dependencies) {
     if (this instanceof Module) {
       this.url = url;
-      this.dependenciesUrl = getVailddependencies(dependencies || [], url);
+      this.dependenciesUrl = getVaildDependencies(dependencies || [], url);
       this.dependenciesModules = [];
       this.refs = [];
       this.status = STATUS.INIT;
@@ -387,9 +387,55 @@
         mod.onload(error);
       });
     },
-    onload: function () {
-      
-    }
+    /**
+     * save/update current module dependence
+     * @param {array} the dependencies id 
+     */
+    save: function (deps) {
+      var mod = this;
+      if (mod.status === STATUS.SAVE) return mod;
+
+      mod.status = STATUS.SAVE;
+      deps = getVaildDependencies(deps, this.url);
+      each(deps, function(d0) {
+        var exsit = false;
+        each(mod.dependenciesModules, function(d1) {
+          if (d0 === d1.url) return (exsit = true);
+        });
+
+        if (!exsit) {
+          mod.dependenciesUrl.push(d0);
+        }
+      });
+    },
+    onload: function (error) {
+      var mod = this;
+      var shim, shimDeps;
+
+      if (error) {
+        mod.exports = undefined;
+        mod.status = STATUS.ERROR;
+        mod.notifyDependencies();
+        return mod;
+      }
+
+      shim = SHIMMAP[mod.url];
+      if (shim) {
+        shimDeps = shim.deps || [];
+        mod.save(shimDeps);
+        mod.factory = function() {
+          return getGlobal(shim.exports);
+        }
+        mod.load(); // resolve the dependencies again
+      }
+
+      if (anonymousMeta) {
+        mod.factory = anonymousMeta.factory;
+        mod.save(anonymousMeta.dependenciesUrl);
+        mod.load();
+        anonymousMeta = null;
+      }
+    },
     load: function() {
       var mod = this;
       var args = [];
@@ -429,9 +475,39 @@
       }
     }
   }
-
+  /**
+   * get the module of specific url, create module if not exsits
+   * 
+   * @param {String} url url of the module
+   * @param {Array} deps dependencies ur list
+   * @param {Object} the module instance of current url
+   */
   Module.get = function(url, deps) {
     return MODULES[url] || (MODULES[url] = new Module(url, deps));
   };
+
+  Module.guid = function() {
+    return `uid_` + +(new Date()) + (Math.random() + '').slice(-4);
+  };
+
+  /**
+   * load modules
+   * 
+   * @param {Array} ids dependencies id list
+   * @param {Function} callback the callback function called after all dependencies loaded
+   * @param {String} id id for the module
+   */
+  Module.use = function(ids, callback, id) {
+    var url = id2Url(id, CONFIG.baseUrl);
+    var mod = Module.get(url, isString(ids) ? [ids] : ids);
+    mod.id = id;
+    mod.factory = callback;
+  };
+
+  /**
+   * init AMD loader
+   * 
+   * 
+   */
   // # end region
 })(this)
