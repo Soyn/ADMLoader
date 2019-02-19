@@ -502,6 +502,7 @@
     var mod = Module.get(url, isString(ids) ? [ids] : ids);
     mod.id = id;
     mod.factory = callback;
+    mod.load()
   };
 
   /**
@@ -509,5 +510,91 @@
    * 
    * 
    */
+  Module.init =function () {
+    var script, scripts, initMod, url;
+
+    if (document.currentScript) {
+      script = document.currentScript;
+    } else {
+      scripts = getScripts();
+      script = scripts[scripts.length - 1];
+    }
+
+    initMod = script.getAttribute('data-main');
+    url = script.hasAttribute ? script.src : script.getAttribute('src', 4);
+    CONFIG.baseUrl = dirname(initMod || url);
+
+    // load main module
+    if (initMod) {
+      Module.use(initMod.replace(new RegExp(CONFIG.baseUrl), '').split(','), noop, Module.guid());
+    }
+    scripts = script = null;
+  }
+
+  /**
+   * Define an amd module
+   */
+  var define = function(id, deps, factory) {
+    var currentScript, mod, url;
+    if (isFunction(id)) {
+      factory = id;
+      deps = [];
+      id = undefined;
+    } else if (isArray(id)) {
+      deps = id;
+      factory = deps;
+      id = undefined;
+    }
+
+    if (currentScript = getInteractiveScript()) {
+      url = currentScript.getAttribute('data-module');
+    }
+
+    if (url) {
+      mod = Module.get(url);
+      if (!mod.id) {
+        mod.id = id || url;
+      }
+      mod.factory = factory;
+      mod.save(deps);
+      mod.load();
+    } else {
+      anonymousMeta = {
+        deps: deps,
+        factory: factory,
+      }
+    }
+  };
+
+  // amd flag
+  define.amd = {};
+
+  /**
+   * require
+   */
+
+   var require = function(ids, callback) {
+     if (isString(ids)) {
+       throw new Error("Invaild! 'ids' can not be string!");
+     }
+
+     if (isFunction(ids)) {
+       callback = ids;
+       ids = [];
+     }
+
+     Module.use(ids, callback, Module.guid());
+   };
+
+   require.config = function (config) {
+     if (!config) return;
+     if (config.baseUrl) {
+       if (config.baseUrl.charAt(config.baseUrl.length - 1) !== '/') config.baseUrl += '/';
+     }
+     mixin(CONFIG, config);
+   };
+   root.define = define;
+   root.require = require;
+   Module.init();
   // # end region
 })(this)
