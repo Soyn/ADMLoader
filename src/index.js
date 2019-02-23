@@ -151,15 +151,6 @@
   }
   // #end region
 
-  function onload(error) {
-    // ensure just execute once
-    node.onload = node.onerror = node.onreadystatechange = null;
-
-    head.remove(node);
-    node = null;
-
-    callback(error);
-  }
   /**
    * load script
    * @param {String} script id
@@ -432,13 +423,13 @@
           return getGlobal(shim.exports);
         }
         mod.load(); // resolve the dependencies again
-      }
-
-      if (anonymousMeta) {
+      } else if (anonymousMeta) {
         mod.factory = anonymousMeta.factory;
         mod.save(anonymousMeta.dependenciesUrl);
         mod.load();
         anonymousMeta = null;
+      } else {
+        mod.load();
       }
     },
     load: function() {
@@ -458,7 +449,7 @@
       mod.checkCircular();
 
       // make every dependency of current module to load
-      each(mod.dependencies, function(dep) {
+      each(mod.dependenciesModules, function(dep) {
         if (dep.status < STATUS.FETCH) {
           dep.fetch();
         } else if (dep.status === STATUS.SAVE) {
