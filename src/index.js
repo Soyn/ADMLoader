@@ -203,7 +203,12 @@
 
     currentlyAddingScript = null;
 
-    
+    function onload(error) {
+      node.onload = node.onerror = node.onreadystatechange = null;
+      head.removeChild(node);
+      node = null;
+      callback(error);
+    }
   }
 
   function getScripts() {
